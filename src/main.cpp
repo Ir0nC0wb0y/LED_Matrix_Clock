@@ -23,6 +23,7 @@
 
 CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
 
+/*
 #define MATRIX_COLUMNS
 #ifdef MATRIX_COLUMNS
   int matrix_column = 0;
@@ -37,6 +38,24 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
 //#define MATRIX_RANDOM
 #ifdef MATRIX_RANDOM
 #endif
+*/
+
+// Setup for messages
+unsigned long message_last = 0;
+#define MESSAGE_DURATION 2000
+
+// Setup for Font/Frame
+#include "customfont.h"
+struct frame {
+  char frame[MATRIX_WIDTH] = {0};
+  int length = 0;
+};
+frame frame_current;
+int  led_position(int col, int row);
+bool get_nth_bit(char byte, int n);
+void updateFrame();
+void convertMessage(String message);
+void testMessage();
 
 unsigned long tic = 0;
 unsigned long toc = 0;
@@ -45,7 +64,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
 
-  // This is used so that you can see if PSRAM is enabled. If not, we will crash in setup() or in loop().
+  // ESP Diagnostics
     Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
     Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
     Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
@@ -60,7 +79,7 @@ void setup() {
 
   Serial.print("Adding LED's to array");
   Serial.print(" Row1");
-  FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_1>(leds,            0, MATRIX_WIDTH);
+  FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_1>(leds,              0, MATRIX_WIDTH);
   Serial.print(" Row2");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_2>(leds,   MATRIX_WIDTH, MATRIX_WIDTH);
   Serial.print(" Row3");
@@ -80,9 +99,207 @@ void setup() {
   FastLED.setBrightness( 64 );
   FastLED.setMaxPowerInVoltsAndMilliamps(5,500);
 
+  // Clear all LED's
+  for (int i=0; i<NUM_LEDS; i++) {
+    leds[i] = CRGB::Black;
+  }
+  FastLED.show();
+
   Serial.println("Setup Complete, moving into loop");
+
+  testMessage();
+  //Serial.println("Current Frame:");
+  //for (int i = 0; i < MATRIX_WIDTH; ++i) {
+  //  Serial.println(frame_current[i], BIN);
+  //}
+  //Serial.println();
+  delay(5000);
+
+  convertMessage("45.:67:89");
 }
 
+void loop() {
+  //if (millis() - message_last >= MESSAGE_DURATION) {
+  //  // create new message
+  //}
+}
+
+int led_position(int col, int row) {
+  int led = 0;
+  led = (row)*48+col;
+  return led;
+}
+
+bool get_nth_bit(char byte_value, int n) {
+  if (n < 0 || n >= 8) {
+    Serial.println("####### ERROR: bitwise op out of bounds");
+    return false;
+  }
+  // Right shift the value by n positions
+    // This moves the nth bit to the least significant position
+    char shifted_value = byte_value >> n;
+
+    //Serial.print("Byte: "); Serial.println(byte_value, BIN);
+    //Serial.print("place: "); Serial.println(n);
+    //Serial.print("Shifted: "); Serial.println(shifted_value, BIN);
+    //Serial.print("Nth value: "); Serial.println(shifted_value & 1);
+
+    // Perform a bitwise AND with 1 (00000001 in binary)
+    // This isolates the LSB, which is our target bit
+    if (shifted_value & 1) {
+      return true;
+    } else {
+      return false;
+    }
+}
+
+void updateFrame() {
+  // loop through led array, may require an XY translator
+  for (int col = 0; col < MATRIX_WIDTH; ++col) { // column
+    char current_byte = frame_current.frame[col];
+    for (int row = 0; row < 8; row++) { // row
+      //Serial.print("Current Row: "); Serial.print(row); Serial.print(" and Column: "); Serial.println(col);
+      int current_led = led_position(col, row);
+      //Serial.print("Current LED: "); Serial.println(current_led);
+      if (get_nth_bit(current_byte,row)) {
+        leds[current_led] = CRGB::Red;
+      } else {
+        leds[current_led] = CRGB::Black;
+      }
+      //Serial.println();
+    }
+  }
+  FastLED.show();
+}
+
+void convertMessage(String message) {
+  Serial.print("Displaying Message: "); Serial.println(message);
+  // test string: "01:23:45"
+  int string_length = message.length();
+  int display_length = 0;
+  frame frame_temp;
+  int display_column_id = 0;
+  Serial.print("Message Length: "); Serial.println(string_length);
+  for (int i = 0; i < string_length; i++) {
+    // Search through the character order
+    int font_number_id = font_numbers_order.indexOf(message[i]);
+    Serial.print("Searching for: "); Serial.println(message[i]);
+    if (font_number_id >= 0) {
+      // Add character to display frame
+      int number_width = font_numbers_length[font_number_id];
+      Serial.print("Found number "); Serial.print(font_numbers_order[font_number_id]); Serial.print(" at index "); Serial.print(font_number_id); Serial.print(" with width "); Serial.println(number_width);
+      for (int j = 0; j < number_width; j++) {
+        frame_temp.frame[display_column_id + j] = font_numbers[font_number_id][j];
+        Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_numbers[font_number_id][j],BIN);
+      }
+      display_column_id = display_column_id + number_width;
+    } else {
+      int font_symbol_id = font_symbols_order.indexOf(message[i]);
+      if (font_symbol_id >= 0) {
+        // add symbol to display frame
+        int symbol_width = font_symbols_length[font_symbol_id];
+        Serial.print("Found symbol "); Serial.print(font_symbols_order[font_symbol_id]); Serial.print(" at index "); Serial.print(font_symbol_id); Serial.print(" with width "); Serial.println(symbol_width);
+        for (int j = 0; j < symbol_width; j++) {
+          frame_temp.frame[display_column_id + j] = font_symbols[font_symbol_id][j];
+          Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_symbols[font_symbol_id][j],BIN);
+        }
+        display_column_id = display_column_id + symbol_width;
+      } else {
+        // character not found in font file
+        Serial.print("Symbol "); Serial.print(message[i]); Serial.println(" not found in font file");
+      }
+    }
+    
+    // Add blankspace
+    if (i<string_length-1) {
+      Serial.println("Adding space");
+      frame_temp.frame[display_column_id + 1] = 0x00000000;
+      display_column_id++;
+    }
+    Serial.print("Frame length: "); Serial.println(display_column_id);
+  }
+
+  //Serial.println("Current Frame:");
+  for (int i = 0; i < MATRIX_WIDTH; ++i) {
+  //  //Serial.println(frame_temp[i], BIN);
+    frame_current.frame[i] = frame_temp.frame[i];
+  }
+  //Serial.println();
+  updateFrame();
+}
+
+void testMessage() {
+  Serial.println("Displaying test message: 01:23:45");
+  frame test_message;
+  // add 0
+    test_message.frame[ 0] = font_numbers[0][0];
+    test_message.frame[ 1] = font_numbers[0][1];
+    test_message.frame[ 2] = font_numbers[0][2];
+    test_message.frame[ 3] = font_numbers[0][3];
+    test_message.frame[ 4] = font_numbers[0][4];
+    test_message.frame[ 5] = 0B00000000;
+
+  // add 1
+    test_message.frame[ 6] = font_numbers[1][0];
+    test_message.frame[ 7] = font_numbers[1][1];
+    test_message.frame[ 8] = font_numbers[1][2];
+    test_message.frame[ 9] = font_numbers[1][3];
+    test_message.frame[10] = font_numbers[1][4];
+    test_message.frame[11] = 0B00000000;
+
+  // add :
+    test_message.frame[12] = font_symbols[0][0];
+    test_message.frame[13] = font_symbols[0][1];
+    test_message.frame[14] = 0B00000000;
+
+  // add 2
+    test_message.frame[15] = font_numbers[2][0];
+    test_message.frame[16] = font_numbers[2][1];
+    test_message.frame[17] = font_numbers[2][2];
+    test_message.frame[18] = font_numbers[2][3];
+    test_message.frame[19] = font_numbers[2][4];
+    test_message.frame[20] = 0B00000000;
+
+  // add 3
+    test_message.frame[21] = font_numbers[3][0];
+    test_message.frame[22] = font_numbers[3][1];
+    test_message.frame[23] = font_numbers[3][2];
+    test_message.frame[24] = font_numbers[3][3];
+    test_message.frame[25] = font_numbers[3][4];
+    test_message.frame[26] = 0B00000000;
+
+  // add :
+    test_message.frame[27] = font_symbols[0][0];
+    test_message.frame[28] = font_symbols[0][1];
+    test_message.frame[29] = 0B00000000;
+
+  // add 4
+    test_message.frame[30] = font_numbers[4][0];
+    test_message.frame[31] = font_numbers[4][1];
+    test_message.frame[32] = font_numbers[4][2];
+    test_message.frame[33] = font_numbers[4][3];
+    test_message.frame[34] = font_numbers[4][4];
+    test_message.frame[35] = 0B00000000;
+
+  // add 5
+    test_message.frame[36] = font_numbers[5][0];
+    test_message.frame[37] = font_numbers[5][1];
+    test_message.frame[38] = font_numbers[5][2];
+    test_message.frame[39] = font_numbers[5][3];
+    test_message.frame[40] = font_numbers[5][4];
+
+  test_message.length = 41;
+
+  //Serial.println("Current Frame:");
+  for (int i = 0; i < MATRIX_WIDTH; ++i) {
+    //Serial.println(frame_temp[i], BIN);
+    frame_current.frame[i] = test_message.frame[i];
+  }
+  //Serial.println();
+  updateFrame();
+}
+
+/*  // Old loop, retaining for history
 void loop() {
   //Serial.print("Loop time [us]: "); Serial.println(toc-tic);
   //tic = micros();
@@ -138,3 +355,4 @@ void loop() {
   //toc = micros();
   //delay(16);
 }
+  */
