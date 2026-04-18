@@ -4,6 +4,10 @@
 #define FASTLED_ESP32_LCD_DRIVER
 #include <FastLED.h>
 
+#include <DS3232RTC.h>
+#include <TimeLib.h>
+#include <Wire.h>
+
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
 #define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
@@ -55,7 +59,20 @@ int  led_position(int col, int row);
 bool get_nth_bit(char byte, int n);
 void updateFrame();
 void convertMessage(String message);
-void testMessage();
+void clearDisplay();
+//void testMessage();
+
+// Setup for RTC
+  bool valid_RTC = false;
+  void SerialClockDisplay(bool force = false);
+  void printDigits(int digits);
+  #define SERIAL_CLOCK_REFRESH_RATE 1000
+  unsigned long serial_clock_update = 0;
+  //#define SET_HARDCODED_TIME
+
+  void MatrixClockDisplay();
+  #define MATRIX_CLOCK_REFRESH_RATE 50
+  unsigned long matrix_clock_update = 0;
 
 unsigned long tic = 0;
 unsigned long toc = 0;
@@ -63,6 +80,8 @@ unsigned long toc = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println();
+
+  Wire.begin();
 
   // ESP Diagnostics
     Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
@@ -97,31 +116,61 @@ void setup() {
   Serial.println(" ... Complete");
 
   FastLED.setBrightness( 64 );
-  FastLED.setMaxPowerInVoltsAndMilliamps(5,500);
+  convertMessage("01:23:45");
+  delay(2000);
+  convertMessage("45:67:89");
+  delay(2000);
 
-  // Clear all LED's
-  for (int i=0; i<NUM_LEDS; i++) {
-    leds[i] = CRGB::Black;
-  }
-  FastLED.show();
+  clearDisplay();
+
+  // Setup RTC
+    setSyncProvider(RTC.get);   // the function to get the time from the RTC
+    if(timeStatus() != timeSet) {
+      Serial.println("Unable to sync with the RTC");
+    } else {
+      Serial.println("RTC setup complete");
+      valid_RTC = true;
+
+      #ifdef SET_HARDCODED_TIME
+        // Set Hardcoded Time
+        tmElements_t tm;
+        time_t t;
+        tm.Year   = CalendarYrToTm(2026);
+        tm.Month  = 4;
+        tm.Day    = 17;
+        tm.Hour   = 23;
+        tm.Minute = 58;
+        tm.Second = 45;
+        t = makeTime(tm);
+        RTC.set(t);        //use the time_t value to ensure correct weekday is set
+        setTime(t);
+        Serial.println("Forced hardcode time");
+        SerialClockDisplay(true);
+      #endif
+    }
 
   Serial.println("Setup Complete, moving into loop");
 
-  testMessage();
-  //Serial.println("Current Frame:");
-  //for (int i = 0; i < MATRIX_WIDTH; ++i) {
-  //  Serial.println(frame_current[i], BIN);
-  //}
-  //Serial.println();
-  delay(5000);
-
-  convertMessage("45.:67:89");
+  //delay(10000);
 }
 
 void loop() {
   //if (millis() - message_last >= MESSAGE_DURATION) {
   //  // create new message
   //}
+
+  // Test RTC Clock
+  SerialClockDisplay();
+  MatrixClockDisplay();
+
+}
+
+void clearDisplay() {
+  // Clear all LED's
+  for (int i=0; i<NUM_LEDS; i++) {
+    leds[i] = CRGB::Black;
+  }
+  FastLED.show();
 }
 
 int led_position(int col, int row) {
@@ -173,24 +222,24 @@ void updateFrame() {
 }
 
 void convertMessage(String message) {
-  Serial.print("Displaying Message: "); Serial.println(message);
+  //Serial.print("Displaying Message: "); Serial.println(message);
   // test string: "01:23:45"
   int string_length = message.length();
   int display_length = 0;
   frame frame_temp;
   int display_column_id = 0;
-  Serial.print("Message Length: "); Serial.println(string_length);
+  //Serial.print("Message Length: "); Serial.println(string_length);
   for (int i = 0; i < string_length; i++) {
     // Search through the character order
     int font_number_id = font_numbers_order.indexOf(message[i]);
-    Serial.print("Searching for: "); Serial.println(message[i]);
+    //Serial.print("Searching for: "); Serial.println(message[i]);
     if (font_number_id >= 0) {
       // Add character to display frame
       int number_width = font_numbers_length[font_number_id];
-      Serial.print("Found number "); Serial.print(font_numbers_order[font_number_id]); Serial.print(" at index "); Serial.print(font_number_id); Serial.print(" with width "); Serial.println(number_width);
+      //Serial.print("Found number "); Serial.print(font_numbers_order[font_number_id]); Serial.print(" at index "); Serial.print(font_number_id); Serial.print(" with width "); Serial.println(number_width);
       for (int j = 0; j < number_width; j++) {
         frame_temp.frame[display_column_id + j] = font_numbers[font_number_id][j];
-        Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_numbers[font_number_id][j],BIN);
+        //Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_numbers[font_number_id][j],BIN);
       }
       display_column_id = display_column_id + number_width;
     } else {
@@ -198,25 +247,25 @@ void convertMessage(String message) {
       if (font_symbol_id >= 0) {
         // add symbol to display frame
         int symbol_width = font_symbols_length[font_symbol_id];
-        Serial.print("Found symbol "); Serial.print(font_symbols_order[font_symbol_id]); Serial.print(" at index "); Serial.print(font_symbol_id); Serial.print(" with width "); Serial.println(symbol_width);
+        //Serial.print("Found symbol "); Serial.print(font_symbols_order[font_symbol_id]); Serial.print(" at index "); Serial.print(font_symbol_id); Serial.print(" with width "); Serial.println(symbol_width);
         for (int j = 0; j < symbol_width; j++) {
           frame_temp.frame[display_column_id + j] = font_symbols[font_symbol_id][j];
-          Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_symbols[font_symbol_id][j],BIN);
+          //Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_symbols[font_symbol_id][j],BIN);
         }
         display_column_id = display_column_id + symbol_width;
       } else {
         // character not found in font file
-        Serial.print("Symbol "); Serial.print(message[i]); Serial.println(" not found in font file");
+        //Serial.print("Symbol "); Serial.print(message[i]); Serial.println(" not found in font file");
       }
     }
     
     // Add blankspace
     if (i<string_length-1) {
-      Serial.println("Adding space");
+      //Serial.println("Adding space");
       frame_temp.frame[display_column_id + 1] = 0x00000000;
       display_column_id++;
     }
-    Serial.print("Frame length: "); Serial.println(display_column_id);
+    //Serial.print("Frame length: "); Serial.println(display_column_id);
   }
 
   //Serial.println("Current Frame:");
@@ -228,6 +277,48 @@ void convertMessage(String message) {
   updateFrame();
 }
 
+void MatrixClockDisplay() {
+  if (millis() - matrix_clock_update >= MATRIX_CLOCK_REFRESH_RATE) {
+    // convert time_t to String
+    time_t t = now();
+    char buffer[20];
+    sprintf(buffer, "%02d:%02d:%02d", hour(t), minute(t), second(t));
+    String formattedTime = String(buffer);
+
+    // Push message to matrix
+    convertMessage(formattedTime);
+  }
+}
+
+
+void SerialClockDisplay(bool force) {
+  // digital clock display of the time
+  if (valid_RTC) {
+    if (millis() - serial_clock_update >= SERIAL_CLOCK_REFRESH_RATE || force) {
+      serial_clock_update = millis();
+      Serial.print(hour());
+      printDigits(minute());
+      printDigits(second());
+      Serial.print(' ');
+      Serial.print(day());
+      Serial.print(' ');
+      Serial.print(month());
+      Serial.print(' ');
+      Serial.print(year()); 
+      Serial.println(); 
+    }
+  }
+}
+
+void printDigits(int digits) {
+  // utility function for digital clock display: prints preceding colon and leading 0
+  Serial.print(':');
+  if(digits < 10)
+      Serial.print('0');
+  Serial.print(digits);
+}
+
+/*
 void testMessage() {
   Serial.println("Displaying test message: 01:23:45");
   frame test_message;
@@ -298,6 +389,7 @@ void testMessage() {
   //Serial.println();
   updateFrame();
 }
+*/
 
 /*  // Old loop, retaining for history
 void loop() {
