@@ -45,22 +45,23 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
 */
 
 // Setup for messages
-unsigned long message_last = 0;
-#define MESSAGE_DURATION 2000
+  unsigned long message_last = 0;
+  #define MESSAGE_DURATION 2000
 
 // Setup for Font/Frame
-#include "customfont.h"
-struct frame {
-  char frame[MATRIX_WIDTH] = {0};
-  int length = 0;
-};
-frame frame_current;
-int  led_position(int col, int row);
-bool get_nth_bit(char byte, int n);
-void updateFrame();
-void convertMessage(String message);
-void clearDisplay();
-//void testMessage();
+  #include "customfont.h"
+  struct frame {
+    char frame[MATRIX_WIDTH] = {0};
+    int length = 0;
+  };
+  frame frame_current;
+  int  led_position(int col, int row);
+  bool get_nth_bit(char byte, int n);
+  void updateFrame();
+  void convertMessage(String message);
+  void clearDisplay();
+  //void testMessage();
+  #define MATRIX_BRIGHTNESS 24
 
 // Setup for RTC
   bool valid_RTC = false;
@@ -115,7 +116,7 @@ void setup() {
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_8>(leds, 7*MATRIX_WIDTH, MATRIX_WIDTH);
   Serial.println(" ... Complete");
 
-  FastLED.setBrightness( 64 );
+  FastLED.setBrightness(MATRIX_BRIGHTNESS);
   convertMessage("01:23:45");
   delay(2000);
   convertMessage("45:67:89");
