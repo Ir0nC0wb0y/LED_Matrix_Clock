@@ -3,12 +3,16 @@
 //#define FASTLED_FORCE_SOFTWARE_SPI
 #define FASTLED_ESP32_LCD_DRIVER
 #include <FastLED.h>
+#include <WiFiUdp.h>
 
+#include <Timezone.h>
+#include <NTP.h>
 #include <DS3232RTC.h>
 #include <TimeLib.h>
 #include <Wire.h>
 
 #include "project_wifi.h"
+//#include "project_ntp.h"
 
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
@@ -45,6 +49,20 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
 #ifdef MATRIX_RANDOM
 #endif
 */
+
+// Time
+  // US Central Time Zone (Chicago, Houston)
+  TimeChangeRule usCDT = {"CDT", Second, Sun, Mar, 2, -300};
+  TimeChangeRule usCST = {"CST", First, Sun, Nov, 2, -360};
+  Timezone usCT(usCDT, usCST);
+
+// NTP Variables
+  WiFiUDP ntpUDP;
+  NTP ntp(ntpUDP);
+  #define NTP_UPDATE_PERIOD 900000 // 900 seconds, or 15 minutes
+  #define NTP_RTC_COMPARE_PERIOD 60000
+  unsigned long ntp_rtc_compare = 0;
+  const char* NTP_server = "us.pool.ntp.org";
 
 // Setup for messages
   unsigned long message_last = 0;
@@ -84,6 +102,13 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
 
+  // ESP Diagnostics
+    Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
+    Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
+    Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
+    Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
+    Serial.println();
+
   Wire.begin();
 
   Serial.print("Starting File System ");
@@ -97,12 +122,12 @@ void setup() {
 
   connect2WiFi(); // must be done after LittleFS is successful
 
-  // ESP Diagnostics
-    Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
-    Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
-    Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
-    Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
-    Serial.println();
+  Serial.print("Setting up NTP... ");
+  ntp.updateInterval(NTP_UPDATE_PERIOD);
+  ntp.begin(NTP_server);
+  Serial.println(" Success!");
+  ntp.update();
+
 
   Serial.print("FastLED Version Integer: ");
   Serial.println(FASTLED_VERSION);
@@ -130,12 +155,16 @@ void setup() {
   Serial.println(" ... Complete");
 
   FastLED.setBrightness(MATRIX_BRIGHTNESS);
+  clearDisplay();
+
+  /*
   convertMessage("01:23:45");
   delay(2000);
   convertMessage("45:67:89");
   delay(2000);
 
   clearDisplay();
+  */
 
   // Setup RTC
     setSyncProvider(RTC.get);   // the function to get the time from the RTC
@@ -157,7 +186,7 @@ void setup() {
         tm.Second = 25;
         t = makeTime(tm);
         RTC.set(t);        //use the time_t value to ensure correct weekday is set
-        setTime(t);
+        setTime(RTC.get());
         Serial.println("Forced hardcode time");
         SerialClockDisplay(true);
       #endif
@@ -169,9 +198,20 @@ void setup() {
 }
 
 void loop() {
-  //if (millis() - message_last >= MESSAGE_DURATION) {
-  //  // create new message
-  //}
+
+  if (ntp.update()) {
+    if (millis() - ntp_rtc_compare >= NTP_RTC_COMPARE_PERIOD) {
+      ntp_rtc_compare = millis();
+      // Compare new ntp time to RTC time, if difference > 5 second update RTC
+      if (abs(ntp.epoch() - RTC.get()) > 5 && ntp.isValid()) {
+        Serial.print("NTP Time: "); Serial.println(ntp.epoch());
+        Serial.print("RTC Time: "); Serial.println(RTC.get());
+        RTC.set(ntp.epoch());
+        setTime(RTC.get());
+      }
+    }
+  }
+  
 
   // Test RTC Clock
   SerialClockDisplay();
@@ -298,9 +338,12 @@ void convertMessage(String message) {
 void MatrixClockDisplay() {
   if (millis() - matrix_clock_update >= MATRIX_CLOCK_REFRESH_RATE) {
     // convert time_t to String
-    time_t t = now();
+    time_t t_now = now();
+    TimeChangeRule *tcr;
+    time_t t_tz = usCT.toLocal(t_now, &tcr);
+    
     char buffer[20];
-    sprintf(buffer, "%02d:%02d:%02d", hour(t), minute(t), second(t));
+    sprintf(buffer, "%02d:%02d:%02d", hourFormat12(t_tz), minute(t_tz), second(t_tz));
     String formattedTime = String(buffer);
 
     // Push message to matrix
@@ -314,15 +357,20 @@ void SerialClockDisplay(bool force) {
   if (valid_RTC) {
     if (millis() - serial_clock_update >= SERIAL_CLOCK_REFRESH_RATE || force) {
       serial_clock_update = millis();
-      Serial.print(hour());
-      printDigits(minute());
-      printDigits(second());
+
+      time_t t_now = now();
+      TimeChangeRule *tcr;
+      time_t t_tz = usCT.toLocal(t_now, &tcr);
+
+      Serial.print(hour(t_tz));
+      printDigits(minute(t_tz));
+      printDigits(second(t_tz));
       Serial.print(' ');
-      Serial.print(day());
-      Serial.print(' ');
-      Serial.print(month());
-      Serial.print(' ');
-      Serial.print(year()); 
+      Serial.print(month(t_tz));
+      Serial.print('/');
+      Serial.print(day(t_tz));
+      Serial.print('/');
+      Serial.print(year(t_tz)); 
       Serial.println(); 
     }
   }

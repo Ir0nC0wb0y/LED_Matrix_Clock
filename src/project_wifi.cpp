@@ -25,15 +25,19 @@ void connect2WiFi() {
           // Line 1: AP name
           String AP_name = Wifi_conf_file.readStringUntil('\n');
           const char* AP_name_char = AP_name.c_str();
+          //Serial.print("AP Name: "); Serial.println(AP_name_char);
           // Line 2: AP password
           String AP_pass = Wifi_conf_file.readStringUntil('\n');
           const char* AP_pass_char = AP_pass.c_str();
+          //Serial.print("AP Pass: "); Serial.println(AP_pass_char);
           
           // Check if AP exists
           Serial.print("Searching for AP: ");
             Serial.print(AP_name);
+            //Serial.println();
           bool AP_exists = false;
           for (int i = 0; i < n_SSIDs; ++i) {
+            //Serial.print(" AP: "); Serial.println(WiFi.SSID(i));
             if (WiFi.SSID(i) == AP_name) {
               AP_exists = true;
               Serial.println(" Found!");
