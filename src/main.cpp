@@ -8,6 +8,8 @@
 #include <TimeLib.h>
 #include <Wire.h>
 
+#include "project_wifi.h"
+
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
 #define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
@@ -84,6 +86,17 @@ void setup() {
 
   Wire.begin();
 
+  Serial.print("Starting File System ");
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS Mount Failed");
+    while(true) {
+      yield();
+    }
+  }
+  Serial.println("... Success!");
+
+  connect2WiFi(); // must be done after LittleFS is successful
+
   // ESP Diagnostics
     Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
     Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
@@ -138,10 +151,10 @@ void setup() {
         time_t t;
         tm.Year   = CalendarYrToTm(2026);
         tm.Month  = 4;
-        tm.Day    = 17;
-        tm.Hour   = 23;
-        tm.Minute = 58;
-        tm.Second = 45;
+        tm.Day    = 19;
+        tm.Hour   = 10;
+        tm.Minute = 50;
+        tm.Second = 25;
         t = makeTime(tm);
         RTC.set(t);        //use the time_t value to ensure correct weekday is set
         setTime(t);
@@ -163,6 +176,10 @@ void loop() {
   // Test RTC Clock
   SerialClockDisplay();
   MatrixClockDisplay();
+
+  if (checkWiFi()) {
+    Serial.println("Checked Wifi");
+  }
 
 }
 
