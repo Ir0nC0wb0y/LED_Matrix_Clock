@@ -12,7 +12,6 @@
 #include <Wire.h>
 
 #include "project_wifi.h"
-//#include "project_ntp.h"
 
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
@@ -343,7 +342,8 @@ void MatrixClockDisplay() {
     time_t t_tz = usCT.toLocal(t_now, &tcr);
     
     char buffer[20];
-    sprintf(buffer, "%02d:%02d:%02d", hourFormat12(t_tz), minute(t_tz), second(t_tz));
+    // condition ? expression_if_true : expression_if_false
+    sprintf(buffer, "%02d:%02d:%02d %s", hourFormat12(t_tz), minute(t_tz), second(t_tz), isAM(t_tz) ? "A" : "P");
     String formattedTime = String(buffer);
 
     // Push message to matrix

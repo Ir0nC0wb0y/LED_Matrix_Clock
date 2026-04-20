@@ -1,7 +1,9 @@
 #include <Arduino.h>
 
-String font_numbers_order = "0123456789";
-int font_numbers_length[10] = {5,
+String font_numbers_order = "0123456789AP";
+int font_numbers_length[12] = {5,
+                               5,
+                               5,
                                5,
                                5,
                                5,
@@ -12,7 +14,7 @@ int font_numbers_length[10] = {5,
                                5,
                                5};
 
-char font_numbers[10][5] = {
+char font_numbers[12][5] = {
     { // 0
         0B01111110,
         0B10000001,
@@ -93,6 +95,20 @@ char font_numbers[10][5] = {
         0B10001001,
         0B01111110
 
+    },
+    { // A
+        0B11111110,
+        0B00001001,
+        0B00001001,
+        0B00001001,
+        0B11111110
+    },
+    { // P
+        0B11111111,
+        0B00001001,
+        0B00001001,
+        0B00001001,
+        0B00000110
     }
 };
 
