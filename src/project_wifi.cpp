@@ -24,10 +24,6 @@ void connect2WiFi() {
           // Read file contents
           // Line 1: AP name
           String AP_name = Wifi_conf_file.readStringUntil('\n');
-          if (AP_name == "Oliver") {
-            Serial.println("Skipping AP: Oliver");
-            return;
-          }
           const char* AP_name_char = AP_name.c_str();
           //Serial.print("AP Name: "); Serial.println(AP_name_char);
           // Line 2: AP password

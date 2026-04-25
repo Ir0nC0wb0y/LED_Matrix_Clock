@@ -89,6 +89,7 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   #define SERIAL_CLOCK_REFRESH_RATE 1000
   unsigned long serial_clock_update = 0;
   //#define SET_HARDCODED_TIME
+  #define UPDATE_RTC_FROM_NPC_DIFFERENCE 1800
 
   void MatrixClockDisplay();
   #define MATRIX_CLOCK_REFRESH_RATE 50
@@ -198,18 +199,21 @@ void setup() {
 
 void loop() {
 
-  if (ntp.update()) {
-    if (millis() - ntp_rtc_compare >= NTP_RTC_COMPARE_PERIOD) {
-      ntp_rtc_compare = millis();
-      // Compare new ntp time to RTC time, if difference > 5 second update RTC
-      if (abs(ntp.epoch() - RTC.get()) > 5 && ntp.isValid()) {
-        Serial.print("NTP Time: "); Serial.println(ntp.epoch());
-        Serial.print("RTC Time: "); Serial.println(RTC.get());
-        RTC.set(ntp.epoch());
-        setTime(RTC.get());
+  if (WiFi.isConnected()) {
+    if (ntp.update()) {
+      if (millis() - ntp_rtc_compare >= NTP_RTC_COMPARE_PERIOD) {
+        ntp_rtc_compare = millis();
+        // Compare new ntp time to RTC time, if difference > 5 second update RTC
+        if (abs(ntp.epoch() - RTC.get()) > 5 && ntp.isValid()) {
+          Serial.print("NTP Time: "); Serial.println(ntp.epoch());
+          Serial.print("RTC Time: "); Serial.println(RTC.get());
+          RTC.set(ntp.epoch());
+          setTime(RTC.get());
+        }
       }
     }
   }
+  
   
 
   // Test RTC Clock
