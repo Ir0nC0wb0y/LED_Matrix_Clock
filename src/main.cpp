@@ -27,7 +27,9 @@
 #define PIN_LED_DATA_5 15 
 #define PIN_LED_DATA_6 16 
 #define PIN_LED_DATA_7 17 
-#define PIN_LED_DATA_8 18 
+#define PIN_LED_DATA_8 18
+
+#define PIN_RTC_SQW     2
 
 
 CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
@@ -91,7 +93,12 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   //#define SET_HARDCODED_TIME
   #define UPDATE_RTC_FROM_NPC_DIFFERENCE 1800
   void check_NTP_RTC(bool force = false);
+  void RTC_SQW_Interrupt();
+  bool RTC_SQW_event = false;
+  unsigned long RTC_SQW_last = 0;
+  unsigned long RTC_SQW_time = 0;
 
+// Matrix Clock
   void MatrixClockDisplay();
   #define MATRIX_CLOCK_REFRESH_RATE 50
   unsigned long matrix_clock_update = 0;
@@ -164,6 +171,9 @@ void setup() {
       Serial.println("Unable to sync with the RTC");
     } else {
       Serial.println("RTC setup complete");
+      RTC.squareWave(SQWAVE_1_HZ);
+      // attach interrupt
+      attachInterrupt(PIN_RTC_SQW, RTC_SQW_Interrupt, RISING);
       valid_RTC = true;
 
       #ifdef SET_HARDCODED_TIME
@@ -198,11 +208,20 @@ void loop() {
   check_NTP_RTC();
 
   // Test RTC Clock
-  SerialClockDisplay();
+  //SerialClockDisplay();
   MatrixClockDisplay();
 
   if (checkWiFi()) {
     Serial.println("Checked Wifi");
+  }
+
+  if (RTC_SQW_event) {
+    Serial.print("SQW Event time: "); Serial.println(RTC_SQW_time);
+    Serial.print("SQW Jitter: "); Serial.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
+    RTC_SQW_last = RTC_SQW_time;
+    RTC_SQW_event = false;
+    SerialClockDisplay();
+    Serial.println();
   }
 
 }
@@ -340,7 +359,7 @@ void MatrixClockDisplay() {
 void SerialClockDisplay(bool force) {
   // digital clock display of the time
   if (valid_RTC) {
-    if (millis() - serial_clock_update >= SERIAL_CLOCK_REFRESH_RATE || force) {
+    //if (millis() - serial_clock_update >= SERIAL_CLOCK_REFRESH_RATE || force) {
       serial_clock_update = millis();
 
       time_t t_now = now();
@@ -357,7 +376,7 @@ void SerialClockDisplay(bool force) {
       Serial.print('/');
       Serial.print(year(t_tz)); 
       Serial.println(); 
-    }
+    //}
   }
 }
 
@@ -393,6 +412,11 @@ void check_NTP_RTC(bool force) {
     }
     Serial.println();
   }
+}
+
+void RTC_SQW_Interrupt() {
+  RTC_SQW_time = micros();
+  RTC_SQW_event = true;
 }
 
 /*
