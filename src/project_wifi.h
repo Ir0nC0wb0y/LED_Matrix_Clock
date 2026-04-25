@@ -10,9 +10,14 @@
 
 #define WIFI_CONNECT_TIME 15000  // connecting to a network is given 15 seconds
 #define WIFI_HOSTNAME "MatrixClock"
-#define WIFI_AP_SSID "MatrixClockConnect"
-#define WIFI_AP_PASS "SomeSecurePassword"
+
 #define WIFI_CHECK_TIME 900000   // will check for WiFi connection every 15 minutes
+
+//#define WIFI_FALLBACK_AP
+#ifdef WIFI_FALLBACK_AP
+  #define WIFI_AP_SSID "MatrixClockConnect"
+  #define WIFI_AP_PASS "SomeSecurePassword"
+#endif
 
 void connect2WiFi();
 bool checkWiFi();

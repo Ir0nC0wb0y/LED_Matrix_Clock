@@ -90,6 +90,7 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   unsigned long serial_clock_update = 0;
   //#define SET_HARDCODED_TIME
   #define UPDATE_RTC_FROM_NPC_DIFFERENCE 1800
+  void check_NTP_RTC(bool force = false);
 
   void MatrixClockDisplay();
   #define MATRIX_CLOCK_REFRESH_RATE 50
@@ -105,8 +106,8 @@ void setup() {
   // ESP Diagnostics
     Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
     Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
-    Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
-    Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
+    //Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
+    //Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
     Serial.println();
 
   Wire.begin();
@@ -136,35 +137,26 @@ void setup() {
   Serial.println("Starting Matrix");
 
   Serial.print("Adding LED's to array");
-  Serial.print(" Row1");
+  //Serial.print(" Row1");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_1>(leds,              0, MATRIX_WIDTH);
-  Serial.print(" Row2");
+  //Serial.print(" Row2");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_2>(leds,   MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row3");
+  //Serial.print(" Row3");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_3>(leds, 2*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row4");
+  //Serial.print(" Row4");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_4>(leds, 3*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row5");
+  //Serial.print(" Row5");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_5>(leds, 4*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row6");
+  //Serial.print(" Row6");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_6>(leds, 5*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row7");
+  //Serial.print(" Row7");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_7>(leds, 6*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.print(" Row8");
+  //Serial.print(" Row8");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_8>(leds, 7*MATRIX_WIDTH, MATRIX_WIDTH);
   Serial.println(" ... Complete");
 
   FastLED.setBrightness(MATRIX_BRIGHTNESS);
   clearDisplay();
-
-  /*
-  convertMessage("01:23:45");
-  delay(2000);
-  convertMessage("45:67:89");
-  delay(2000);
-
-  clearDisplay();
-  */
 
   // Setup RTC
     setSyncProvider(RTC.get);   // the function to get the time from the RTC
@@ -192,29 +184,18 @@ void setup() {
       #endif
     }
 
+
+  check_NTP_RTC(true);
+
   Serial.println("Setup Complete, moving into loop");
+  Serial.println();
 
   //delay(10000);
 }
 
 void loop() {
 
-  if (WiFi.isConnected()) {
-    if (ntp.update()) {
-      if (millis() - ntp_rtc_compare >= NTP_RTC_COMPARE_PERIOD) {
-        ntp_rtc_compare = millis();
-        // Compare new ntp time to RTC time, if difference > 5 second update RTC
-        if (abs(ntp.epoch() - RTC.get()) > 5 && ntp.isValid()) {
-          Serial.print("NTP Time: "); Serial.println(ntp.epoch());
-          Serial.print("RTC Time: "); Serial.println(RTC.get());
-          RTC.set(ntp.epoch());
-          setTime(RTC.get());
-        }
-      }
-    }
-  }
-  
-  
+  check_NTP_RTC();
 
   // Test RTC Clock
   SerialClockDisplay();
@@ -386,6 +367,32 @@ void printDigits(int digits) {
   if(digits < 10)
       Serial.print('0');
   Serial.print(digits);
+}
+
+void check_NTP_RTC(bool force) {
+  if (millis() - ntp_rtc_compare >= NTP_RTC_COMPARE_PERIOD || force) {
+    ntp_rtc_compare = millis();
+    time_t time_ntp = ntp.epoch();
+    time_t time_rtc = RTC.get();
+    Serial.println();
+    Serial.println("Time Compare:");
+    Serial.print(" NTP Time: "); Serial.println(time_ntp);
+    Serial.print(" RTC Time: "); Serial.println(time_rtc);
+    Serial.print(" Difference: "); Serial.println(abs(time_ntp-time_rtc));
+    Serial.print(" WiFi State: "); Serial.println(WiFi.isConnected());
+    if (WiFi.isConnected()) {
+      if (ntp.update()) {
+        time_ntp = ntp.epoch();
+      }
+      if (abs(time_ntp - time_rtc) > 5 && ntp.isValid()) {
+        Serial.println("Updating Time");
+        RTC.set(ntp.epoch());
+        setTime(ntp.epoch());
+        
+      }
+    }
+    Serial.println();
+  }
 }
 
 /*

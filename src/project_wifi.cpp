@@ -31,6 +31,13 @@ void connect2WiFi() {
           const char* AP_pass_char = AP_pass.c_str();
           //Serial.print("AP Pass: "); Serial.println(AP_pass_char);
           
+          /*
+          if (AP_name == "Oliver") {
+            Serial.println("Skipping AP 'Oliver'");
+            return;
+          }
+          */
+
           // Check if AP exists
           Serial.print("Searching for AP: ");
             Serial.print(AP_name);
@@ -71,16 +78,17 @@ void connect2WiFi() {
         Wifi_conf_file = Wifi_conf.openNextFile();
       }
     }
-    if (WiFi.status() != WL_CONNECTED) {
-      WiFi.mode(WIFI_AP);
-      WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-      IPAddress IP = WiFi.softAPIP();
-      Serial.print("AP IP address: ");
-      Serial.println(IP);
-    } else {
+    #ifdef WIFI_FALLBACK_AP
+      if (WiFi.status() != WL_CONNECTED) {
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+        IPAddress IP = WiFi.softAPIP();
+        Serial.print("AP IP address: ");
+      }
+    #else
       Serial.print("IP address: ");
       Serial.println(WiFi.localIP());
-    }
+    #endif
   }
 }
 
