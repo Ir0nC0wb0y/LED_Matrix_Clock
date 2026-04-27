@@ -16,6 +16,8 @@
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
 #define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
+#define MATRIX_BRIGHTNESS_DAY 50
+#define MATRIX_BRIGHTNESS_NIGHT 3
 
 #define LED_CHIPSET NEOPIXEL
 #define LED_COLOR_ORDER GRB
@@ -82,7 +84,7 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   void convertMessage(String message);
   void clearDisplay();
   //void testMessage();
-  #define MATRIX_BRIGHTNESS 24
+  
 
 // Setup for RTC
   bool valid_RTC = false;
@@ -102,6 +104,10 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   void MatrixClockDisplay();
   #define MATRIX_CLOCK_REFRESH_RATE 50
   unsigned long matrix_clock_update = 0;
+  void MatrixBrightness(bool force = false);
+  int matrix_brightness = MATRIX_BRIGHTNESS_DAY;
+  #define BRIGHTNESS_CHECK_PERIOD 120000
+  unsigned long brightness_check_last = 0;
 
 unsigned long tic = 0;
 unsigned long toc = 0;
@@ -162,7 +168,7 @@ void setup() {
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_8>(leds, 7*MATRIX_WIDTH, MATRIX_WIDTH);
   Serial.println(" ... Complete");
 
-  FastLED.setBrightness(MATRIX_BRIGHTNESS);
+  //FastLED.setBrightness(matrix_brightness);
   clearDisplay();
 
   // Setup RTC
@@ -200,12 +206,15 @@ void setup() {
   Serial.println("Setup Complete, moving into loop");
   Serial.println();
 
+  MatrixBrightness(true);
+
   //delay(10000);
 }
 
 void loop() {
 
   check_NTP_RTC();
+  MatrixBrightness();
 
   // Test RTC Clock
   //SerialClockDisplay();
@@ -272,7 +281,7 @@ void updateFrame() {
       int current_led = led_position(col, row);
       //Serial.print("Current LED: "); Serial.println(current_led);
       if (get_nth_bit(current_byte,row)) {
-        leds[current_led] = CRGB::Red;
+        leds[current_led] = CRGB::Green;
       } else {
         leds[current_led] = CRGB::Black;
       }
@@ -418,6 +427,43 @@ void RTC_SQW_Interrupt() {
   RTC_SQW_time = micros();
   RTC_SQW_event = true;
 }
+
+void MatrixBrightness(bool force) {
+
+  if (millis() - brightness_check_last >= BRIGHTNESS_CHECK_PERIOD || force) {
+    brightness_check_last = millis();
+
+    bool state_change = false;
+    time_t t_now = now();
+    TimeChangeRule *tcr;
+    time_t t_tz = usCT.toLocal(t_now, &tcr);
+    int hour_temp = hour(t_tz);
+    Serial.print("Current hour is: "); Serial.println(hour_temp);
+
+    
+    if (hour_temp >= 8 && hour_temp < 22) {
+      // if hour between 8am and 11pm, use day time brightness
+      if (matrix_brightness != MATRIX_BRIGHTNESS_DAY) {
+        Serial.println(" using day time brightness");
+        matrix_brightness = MATRIX_BRIGHTNESS_DAY;
+        state_change = true;
+      }
+    } else if (hour_temp < 8 || hour_temp >= 22) {
+      // else use nighttime brightness
+      if (matrix_brightness != MATRIX_BRIGHTNESS_NIGHT) {
+        Serial.println(" using night time brightness");
+        matrix_brightness = MATRIX_BRIGHTNESS_NIGHT;
+        state_change = true;
+      }
+    }
+    if (state_change) {
+      Serial.print(" Setting brightness to: "); Serial.println(matrix_brightness);
+      FastLED.setBrightness(matrix_brightness);
+    }
+  }
+
+}
+
 
 /*
 void testMessage() {
