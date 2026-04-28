@@ -13,13 +13,16 @@
 
 #include "project_wifi.h"
 
-#define MATRIX_WIDTH  48
-#define MATRIX_HEIGHT  8
-#define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
+// Options
 #define MATRIX_BRIGHTNESS_DAY 50
 #define MATRIX_BRIGHTNESS_NIGHT 1
 #define MATRIX_COLOR_CHANGE_HOUR
 //#define MATRIX_COLOR_CHANGE_MIN
+
+
+#define MATRIX_WIDTH  48
+#define MATRIX_HEIGHT  8
+#define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
 
 #define LED_CHIPSET NEOPIXEL
 #define LED_COLOR_ORDER GRB
@@ -297,23 +300,24 @@ void updateFrame() {
   // loop through led array, may require an XY translator
   bool matrix_color_change = false;
   uint8_t matrix_color_hue = 0;
-  if (matrix_brightness == MATRIX_BRIGHTNESS_DAY) {
-    matrix_color_change = true;
-    // calculate color based on the percent of the hour
-    time_t t_now = now();
-    TimeChangeRule *tcr;
-    time_t t_tz = usCT.toLocal(t_now, &tcr);
-    int time_minute = minute(t_tz);
-    int time_second = second(t_tz);
-    #ifdef MATRIX_COLOR_CHANGE_HOUR
-      double hue_percent = ((double)time_minute + (double)time_second/60)/60;
-    #endif
-    #ifdef MATRIX_COLOR_CHANGE_MIN
-      double hue_percent = (double)time_second/60;
-    #endif    
-    matrix_color_hue = (uint8_t)(hue_percent * 255);
-
-  }
+  #if defined(MATRIX_COLOR_CHANGE_HOUR) || defined(MATRIX_COLOR_CHANGE_MIN)
+    if (matrix_brightness == MATRIX_BRIGHTNESS_DAY) {
+      matrix_color_change = true;
+      // calculate color based on the percent of the hour
+      time_t t_now = now();
+      TimeChangeRule *tcr;
+      time_t t_tz = usCT.toLocal(t_now, &tcr);
+      int time_minute = minute(t_tz);
+      int time_second = second(t_tz);
+      #ifdef MATRIX_COLOR_CHANGE_HOUR
+        double hue_percent = ((double)time_minute + (double)time_second/60)/60;
+      #endif
+      #ifdef MATRIX_COLOR_CHANGE_MIN
+        double hue_percent = (double)time_second/60;
+      #endif    
+      matrix_color_hue = (uint8_t)(hue_percent * 255);
+    }
+  #endif
   int last_color_led = 0;
   for (int col = 0; col < MATRIX_WIDTH; ++col) { // column
     char current_byte = frame_current.frame[col];
