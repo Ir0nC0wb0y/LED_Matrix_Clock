@@ -17,7 +17,9 @@
 #define MATRIX_HEIGHT  8
 #define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
 #define MATRIX_BRIGHTNESS_DAY 50
-#define MATRIX_BRIGHTNESS_NIGHT 3
+#define MATRIX_BRIGHTNESS_NIGHT 1
+#define MATRIX_COLOR_CHANGE_HOUR
+//#define MATRIX_COLOR_CHANGE_MIN
 
 #define LED_CHIPSET NEOPIXEL
 #define LED_COLOR_ORDER GRB
@@ -32,6 +34,21 @@
 #define PIN_LED_DATA_8 18
 
 #define PIN_RTC_SQW     2
+
+//#define DEBUG_SERIAL
+#ifdef DEBUG_SERIAL
+  #define DBG_SERIAL Serial
+#else
+  class NullSerial{
+    public:
+      template<typename T>
+      void print(T) {}
+      template<typename T>
+      void println(T) {}
+      void println() {}
+  };
+  NullSerial DBG_SERIAL;
+#endif
 
 
 CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
@@ -106,7 +123,7 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   unsigned long matrix_clock_update = 0;
   void MatrixBrightness(bool force = false);
   int matrix_brightness = MATRIX_BRIGHTNESS_DAY;
-  #define BRIGHTNESS_CHECK_PERIOD 120000
+  #define BRIGHTNESS_CHECK_PERIOD 5000
   unsigned long brightness_check_last = 0;
 
 unsigned long tic = 0;
@@ -115,58 +132,62 @@ unsigned long toc = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println();
+  Serial.println("Starting clock protocol");
+  Serial.println();
 
   // ESP Diagnostics
-    Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
-    Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
-    //Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
-    //Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
-    Serial.println();
+    DBG_SERIAL.println("ESP Diagnostics");
+    DBG_SERIAL.print(" Total heap: "); DBG_SERIAL.println(ESP.getHeapSize());
+    DBG_SERIAL.print(" Free heap: "); DBG_SERIAL.println(ESP.getFreeHeap());
+    DBG_SERIAL.print(" Free Sketch Space: "); DBG_SERIAL.println(ESP.getFreeSketchSpace());
+    //DBG_SERIAL.print("Total PSRAM: "); DBG_SERIAL.println(ESP.getPsramSize());  // If this prints out 0, then PSRAM is not enabled.
+    //DBG_SERIAL.print("Free PSRAM: "); DBG_SERIAL.println(ESP.getFreePsram());
+    DBG_SERIAL.println();
 
   Wire.begin();
 
-  Serial.print("Starting File System ");
+  DBG_SERIAL.print("Starting File System ");
   if (!LittleFS.begin(true)) {
-    Serial.println("LittleFS Mount Failed");
+    DBG_SERIAL.println("LittleFS Mount Failed");
     while(true) {
       yield();
     }
   }
-  Serial.println("... Success!");
+  DBG_SERIAL.println("... Success!");
 
   connect2WiFi(); // must be done after LittleFS is successful
 
-  Serial.print("Setting up NTP... ");
+  DBG_SERIAL.print("Setting up NTP... ");
   ntp.updateInterval(NTP_UPDATE_PERIOD);
   ntp.begin(NTP_server);
-  Serial.println(" Success!");
+  DBG_SERIAL.println(" Success!");
   ntp.update();
 
 
-  Serial.print("FastLED Version Integer: ");
-  Serial.println(FASTLED_VERSION);
-  Serial.println();
+  DBG_SERIAL.print("FastLED Version Integer: ");
+  DBG_SERIAL.println(FASTLED_VERSION);
+  DBG_SERIAL.println();
 
-  Serial.println("Starting Matrix");
+  DBG_SERIAL.println("Starting Matrix");
 
-  Serial.print("Adding LED's to array");
-  //Serial.print(" Row1");
+  DBG_SERIAL.print("Adding LED's to array");
+  //DBG_SERIAL.print(" Row1");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_1>(leds,              0, MATRIX_WIDTH);
-  //Serial.print(" Row2");
+  //DBG_SERIAL.print(" Row2");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_2>(leds,   MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row3");
+  //DBG_SERIAL.print(" Row3");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_3>(leds, 2*MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row4");
+  //DBG_SERIAL.print(" Row4");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_4>(leds, 3*MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row5");
+  //DBG_SERIAL.print(" Row5");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_5>(leds, 4*MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row6");
+  //DBG_SERIAL.print(" Row6");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_6>(leds, 5*MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row7");
+  //DBG_SERIAL.print(" Row7");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_7>(leds, 6*MATRIX_WIDTH, MATRIX_WIDTH);
-  //Serial.print(" Row8");
+  //DBG_SERIAL.print(" Row8");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_8>(leds, 7*MATRIX_WIDTH, MATRIX_WIDTH);
-  Serial.println(" ... Complete");
+  DBG_SERIAL.println(" ... Complete");
 
   //FastLED.setBrightness(matrix_brightness);
   clearDisplay();
@@ -174,9 +195,9 @@ void setup() {
   // Setup RTC
     setSyncProvider(RTC.get);   // the function to get the time from the RTC
     if(timeStatus() != timeSet) {
-      Serial.println("Unable to sync with the RTC");
+      DBG_SERIAL.println("Unable to sync with the RTC");
     } else {
-      Serial.println("RTC setup complete");
+      DBG_SERIAL.println("RTC setup complete");
       RTC.squareWave(SQWAVE_1_HZ);
       // attach interrupt
       attachInterrupt(PIN_RTC_SQW, RTC_SQW_Interrupt, RISING);
@@ -195,7 +216,7 @@ void setup() {
         t = makeTime(tm);
         RTC.set(t);        //use the time_t value to ensure correct weekday is set
         setTime(RTC.get());
-        Serial.println("Forced hardcode time");
+        DBG_SERIAL.println("Forced hardcode time");
         SerialClockDisplay(true);
       #endif
     }
@@ -203,8 +224,8 @@ void setup() {
 
   check_NTP_RTC(true);
 
-  Serial.println("Setup Complete, moving into loop");
-  Serial.println();
+  DBG_SERIAL.println("Setup Complete, moving into loop");
+  DBG_SERIAL.println();
 
   MatrixBrightness(true);
 
@@ -221,16 +242,16 @@ void loop() {
   MatrixClockDisplay();
 
   if (checkWiFi()) {
-    Serial.println("Checked Wifi");
+    DBG_SERIAL.println("Checked Wifi");
   }
 
   if (RTC_SQW_event) {
-    Serial.print("SQW Event time: "); Serial.println(RTC_SQW_time);
-    Serial.print("SQW Jitter: "); Serial.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
+    DBG_SERIAL.print("SQW Event time: "); DBG_SERIAL.println(RTC_SQW_time);
+    DBG_SERIAL.print("SQW Jitter: "); DBG_SERIAL.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
     RTC_SQW_last = RTC_SQW_time;
     RTC_SQW_event = false;
     SerialClockDisplay();
-    Serial.println();
+    DBG_SERIAL.println();
   }
 
 }
@@ -251,17 +272,17 @@ int led_position(int col, int row) {
 
 bool get_nth_bit(char byte_value, int n) {
   if (n < 0 || n >= 8) {
-    Serial.println("####### ERROR: bitwise op out of bounds");
+    DBG_SERIAL.println("####### ERROR: bitwise op out of bounds");
     return false;
   }
   // Right shift the value by n positions
     // This moves the nth bit to the least significant position
     char shifted_value = byte_value >> n;
 
-    //Serial.print("Byte: "); Serial.println(byte_value, BIN);
-    //Serial.print("place: "); Serial.println(n);
-    //Serial.print("Shifted: "); Serial.println(shifted_value, BIN);
-    //Serial.print("Nth value: "); Serial.println(shifted_value & 1);
+    //DBG_SERIAL.print("Byte: "); DBG_SERIAL.println(byte_value, BIN);
+    //DBG_SERIAL.print("place: "); DBG_SERIAL.println(n);
+    //DBG_SERIAL.print("Shifted: "); DBG_SERIAL.println(shifted_value, BIN);
+    //DBG_SERIAL.print("Nth value: "); DBG_SERIAL.println(shifted_value & 1);
 
     // Perform a bitwise AND with 1 (00000001 in binary)
     // This isolates the LSB, which is our target bit
@@ -274,42 +295,69 @@ bool get_nth_bit(char byte_value, int n) {
 
 void updateFrame() {
   // loop through led array, may require an XY translator
+  bool matrix_color_change = false;
+  uint8_t matrix_color_hue = 0;
+  if (matrix_brightness == MATRIX_BRIGHTNESS_DAY) {
+    matrix_color_change = true;
+    // calculate color based on the percent of the hour
+    time_t t_now = now();
+    TimeChangeRule *tcr;
+    time_t t_tz = usCT.toLocal(t_now, &tcr);
+    int time_minute = minute(t_tz);
+    int time_second = second(t_tz);
+    #ifdef MATRIX_COLOR_CHANGE_HOUR
+      double hue_percent = ((double)time_minute + (double)time_second/60)/60;
+    #endif
+    #ifdef MATRIX_COLOR_CHANGE_MIN
+      double hue_percent = (double)time_second/60;
+    #endif    
+    matrix_color_hue = (uint8_t)(hue_percent * 255);
+
+  }
+  int last_color_led = 0;
   for (int col = 0; col < MATRIX_WIDTH; ++col) { // column
     char current_byte = frame_current.frame[col];
     for (int row = 0; row < 8; row++) { // row
-      //Serial.print("Current Row: "); Serial.print(row); Serial.print(" and Column: "); Serial.println(col);
+      //DBG_SERIAL.print("Current Row: "); DBG_SERIAL.print(row); DBG_SERIAL.print(" and Column: "); DBG_SERIAL.println(col);
       int current_led = led_position(col, row);
-      //Serial.print("Current LED: "); Serial.println(current_led);
+      //DBG_SERIAL.print("Current LED: "); DBG_SERIAL.println(current_led);
+      
       if (get_nth_bit(current_byte,row)) {
-        leds[current_led] = CRGB::Green;
+        if (matrix_color_change) {
+          leds[current_led] = CHSV(matrix_color_hue,(uint8_t)255,(uint8_t)255);
+          last_color_led = current_led;
+        } else {
+          leds[current_led] = CRGB::Blue;
+        }
+        
       } else {
         leds[current_led] = CRGB::Black;
       }
-      //Serial.println();
+
     }
   }
   FastLED.show();
 }
 
 void convertMessage(String message) {
-  //Serial.print("Displaying Message: "); Serial.println(message);
+  //DBG_SERIAL.print("Displaying Message: "); DBG_SERIAL.println(message);
   // test string: "01:23:45"
   int string_length = message.length();
   int display_length = 0;
   frame frame_temp;
   int display_column_id = 0;
-  //Serial.print("Message Length: "); Serial.println(string_length);
+  //DBG_SERIAL.print("Message Length: "); DBG_SERIAL.println(string_length);
   for (int i = 0; i < string_length; i++) {
     // Search through the character order
     int font_number_id = font_numbers_order.indexOf(message[i]);
-    //Serial.print("Searching for: "); Serial.println(message[i]);
+    //DBG_SERIAL.print("Searching for: "); DBG_SERIAL.println(message[i]);
     if (font_number_id >= 0) {
       // Add character to display frame
       int number_width = font_numbers_length[font_number_id];
-      //Serial.print("Found number "); Serial.print(font_numbers_order[font_number_id]); Serial.print(" at index "); Serial.print(font_number_id); Serial.print(" with width "); Serial.println(number_width);
+      //DBG_SERIAL.print("Found number "); DBG_SERIAL.print(font_numbers_order[font_number_id]); DBG_SERIAL.print(" at index "); DBG_SERIAL.print(font_number_id); DBG_SERIAL.print(" with width "); DBG_SERIAL.println(number_width);
       for (int j = 0; j < number_width; j++) {
         frame_temp.frame[display_column_id + j] = font_numbers[font_number_id][j];
-        //Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_numbers[font_number_id][j],BIN);
+        //DBG_SERIAL.print("j"); DBG_SERIAL.print(j); DBG_SERIAL.print(" col"); DBG_SERIAL.print(display_column_id + j); DBG_SERIAL.print(" BIN "); DBG_SERIAL.println(font_numbers[font_number_id][j],BIN);
       }
       display_column_id = display_column_id + number_width;
     } else {
@@ -317,33 +365,33 @@ void convertMessage(String message) {
       if (font_symbol_id >= 0) {
         // add symbol to display frame
         int symbol_width = font_symbols_length[font_symbol_id];
-        //Serial.print("Found symbol "); Serial.print(font_symbols_order[font_symbol_id]); Serial.print(" at index "); Serial.print(font_symbol_id); Serial.print(" with width "); Serial.println(symbol_width);
+        //DBG_SERIAL.print("Found symbol "); DBG_SERIAL.print(font_symbols_order[font_symbol_id]); DBG_SERIAL.print(" at index "); DBG_SERIAL.print(font_symbol_id); DBG_SERIAL.print(" with width "); DBG_SERIAL.println(symbol_width);
         for (int j = 0; j < symbol_width; j++) {
           frame_temp.frame[display_column_id + j] = font_symbols[font_symbol_id][j];
-          //Serial.print("j"); Serial.print(j); Serial.print(" col"); Serial.print(display_column_id + j); Serial.print(" BIN "); Serial.println(font_symbols[font_symbol_id][j],BIN);
+          //DBG_SERIAL.print("j"); DBG_SERIAL.print(j); DBG_SERIAL.print(" col"); DBG_SERIAL.print(display_column_id + j); DBG_SERIAL.print(" BIN "); DBG_SERIAL.println(font_symbols[font_symbol_id][j],BIN);
         }
         display_column_id = display_column_id + symbol_width;
       } else {
         // character not found in font file
-        //Serial.print("Symbol "); Serial.print(message[i]); Serial.println(" not found in font file");
+        //DBG_SERIAL.print("Symbol "); DBG_SERIAL.print(message[i]); DBG_SERIAL.println(" not found in font file");
       }
     }
     
     // Add blankspace
     if (i<string_length-1) {
-      //Serial.println("Adding space");
+      //DBG_SERIAL.println("Adding space");
       frame_temp.frame[display_column_id + 1] = 0x00000000;
       display_column_id++;
     }
-    //Serial.print("Frame length: "); Serial.println(display_column_id);
+    //DBG_SERIAL.print("Frame length: "); DBG_SERIAL.println(display_column_id);
   }
 
-  //Serial.println("Current Frame:");
+  //DBG_SERIAL.println("Current Frame:");
   for (int i = 0; i < MATRIX_WIDTH; ++i) {
-  //  //Serial.println(frame_temp[i], BIN);
+  //  //DBG_SERIAL.println(frame_temp[i], BIN);
     frame_current.frame[i] = frame_temp.frame[i];
   }
-  //Serial.println();
+  //DBG_SERIAL.println();
   updateFrame();
 }
 
@@ -375,26 +423,26 @@ void SerialClockDisplay(bool force) {
       TimeChangeRule *tcr;
       time_t t_tz = usCT.toLocal(t_now, &tcr);
 
-      Serial.print(hour(t_tz));
+      DBG_SERIAL.print(hour(t_tz));
       printDigits(minute(t_tz));
       printDigits(second(t_tz));
-      Serial.print(' ');
-      Serial.print(month(t_tz));
-      Serial.print('/');
-      Serial.print(day(t_tz));
-      Serial.print('/');
-      Serial.print(year(t_tz)); 
-      Serial.println(); 
+      DBG_SERIAL.print(' ');
+      DBG_SERIAL.print(month(t_tz));
+      DBG_SERIAL.print('/');
+      DBG_SERIAL.print(day(t_tz));
+      DBG_SERIAL.print('/');
+      DBG_SERIAL.print(year(t_tz)); 
+      DBG_SERIAL.println(); 
     //}
   }
 }
 
 void printDigits(int digits) {
   // utility function for digital clock display: prints preceding colon and leading 0
-  Serial.print(':');
+  DBG_SERIAL.print(':');
   if(digits < 10)
-      Serial.print('0');
-  Serial.print(digits);
+      DBG_SERIAL.print('0');
+  DBG_SERIAL.print(digits);
 }
 
 void check_NTP_RTC(bool force) {
@@ -402,24 +450,24 @@ void check_NTP_RTC(bool force) {
     ntp_rtc_compare = millis();
     time_t time_ntp = ntp.epoch();
     time_t time_rtc = RTC.get();
-    Serial.println();
-    Serial.println("Time Compare:");
-    Serial.print(" NTP Time: "); Serial.println(time_ntp);
-    Serial.print(" RTC Time: "); Serial.println(time_rtc);
-    Serial.print(" Difference: "); Serial.println(abs(time_ntp-time_rtc));
-    Serial.print(" WiFi State: "); Serial.println(WiFi.isConnected());
+    DBG_SERIAL.println();
+    DBG_SERIAL.println("Time Compare:");
+    DBG_SERIAL.print(" NTP Time: "); DBG_SERIAL.println(time_ntp);
+    DBG_SERIAL.print(" RTC Time: "); DBG_SERIAL.println(time_rtc);
+    DBG_SERIAL.print(" Difference: "); DBG_SERIAL.println(abs(time_ntp-time_rtc));
+    DBG_SERIAL.print(" WiFi State: "); DBG_SERIAL.println(WiFi.isConnected());
     if (WiFi.isConnected()) {
       if (ntp.update()) {
         time_ntp = ntp.epoch();
       }
       if (abs(time_ntp - time_rtc) > 5 && ntp.isValid()) {
-        Serial.println("Updating Time");
+        DBG_SERIAL.println("Updating Time");
         RTC.set(ntp.epoch());
         setTime(ntp.epoch());
         
       }
     }
-    Serial.println();
+    DBG_SERIAL.println();
   }
 }
 
@@ -438,26 +486,27 @@ void MatrixBrightness(bool force) {
     TimeChangeRule *tcr;
     time_t t_tz = usCT.toLocal(t_now, &tcr);
     int hour_temp = hour(t_tz);
-    Serial.print("Current hour is: "); Serial.println(hour_temp);
+    DBG_SERIAL.print("Current hour is: "); DBG_SERIAL.println(hour_temp);
 
     
     if (hour_temp >= 8 && hour_temp < 22) {
       // if hour between 8am and 11pm, use day time brightness
       if (matrix_brightness != MATRIX_BRIGHTNESS_DAY) {
-        Serial.println(" using day time brightness");
+        DBG_SERIAL.println(" using day time brightness");
         matrix_brightness = MATRIX_BRIGHTNESS_DAY;
         state_change = true;
       }
     } else if (hour_temp < 8 || hour_temp >= 22) {
       // else use nighttime brightness
       if (matrix_brightness != MATRIX_BRIGHTNESS_NIGHT) {
-        Serial.println(" using night time brightness");
+        DBG_SERIAL.println(" using night time brightness");
         matrix_brightness = MATRIX_BRIGHTNESS_NIGHT;
         state_change = true;
       }
     }
     if (state_change) {
-      Serial.print(" Setting brightness to: "); Serial.println(matrix_brightness);
+      DBG_SERIAL.print(" Setting brightness to: "); DBG_SERIAL.println(matrix_brightness);
+      DBG_SERIAL.println();
       FastLED.setBrightness(matrix_brightness);
     }
   }
