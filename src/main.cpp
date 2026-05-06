@@ -23,6 +23,8 @@
 #define MATRIX_WIDTH  48
 #define MATRIX_HEIGHT  8
 #define NUM_LEDS (MATRIX_HEIGHT * MATRIX_WIDTH)
+#define MATRIX_VOLTS             5.0
+#define MATRIX_MILLIAMPS_MAX 13000
 
 #define LED_CHIPSET NEOPIXEL
 #define LED_COLOR_ORDER GRB
@@ -159,6 +161,7 @@ void setup() {
   DBG_SERIAL.println("... Success!");
 
   connect2WiFi(); // must be done after LittleFS is successful
+  DBG_SERIAL.print("WiFi.status = "); Serial.println(WiFi.status());
 
   DBG_SERIAL.print("Setting up NTP... ");
   ntp.updateInterval(NTP_UPDATE_PERIOD);
@@ -191,6 +194,8 @@ void setup() {
   //DBG_SERIAL.print(" Row8");
   FastLED.addLeds<LED_CHIPSET, PIN_LED_DATA_8>(leds, 7*MATRIX_WIDTH, MATRIX_WIDTH);
   DBG_SERIAL.println(" ... Complete");
+
+  FastLED.setMaxPowerInVoltsAndMilliamps(MATRIX_VOLTS, MATRIX_MILLIAMPS_MAX);
 
   //FastLED.setBrightness(matrix_brightness);
   clearDisplay();

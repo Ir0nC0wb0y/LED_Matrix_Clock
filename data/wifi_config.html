@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LED Matrix Clock - WiFi Setup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+        .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 8px 0; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        button.delete { background: #dc3545; }
+        button.delete:hover { background: #c82333; }
+        #networks, #existing { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 15px; }
+        .item { padding: 10px; margin: 4px 0; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .item:hover { background: #e9ecef; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        .warning { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LED Matrix Clock WiFi Setup</h1>
+        
+        <button onclick="scanNetworks()">Scan for Networks</button>
+        
+        <h2>Available Networks</h2>
+        <div id="networks"></div>
+        
+        <h2>Manual / Custom Entry</h2>
+        <label>Config Filename (without .conf)</label>
+        <input type="text" id="filename" placeholder="e.g. Home, Office, Guest">
+        <span id="filenameWarning" class="warning"></span>
+        
+        <label>SSID</label>
+        <input type="text" id="ssid" placeholder="Network Name">
+        
+        <label>Password</label>
+        <input type="password" id="pass" placeholder="WiFi Password">
+        
+        <button onclick="saveWifi()">Save Configuration</button>
+        
+        <h2>Existing Configurations</h2>
+        <div id="existing"></div>
+        
+        <p id="status"></p>
+    </div>
+
+    <script>
+        let currentFiles = [];
+
+        async function scanNetworks() {
+            const status = document.getElementById('status');
+            status.textContent = 'Scanning for networks... (this may take a few seconds)';
+            
+            try {
+                await fetch('/scan');   // Start the scan
+                
+                // Poll for results
+                let attempts = 0;
+                const maxAttempts = 30;   // ~15 seconds max
+                
+                const poll = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const res = await fetch('/scanresult');
+                        const data = await res.json();
+                        
+                        if (data.status === "scanning") {
+                            return;   // keep polling
+                        }
+                        
+                        clearInterval(poll);
+                        
+                        if (data.status === "failed") {
+                            status.textContent = 'Scan failed';
+                            return;
+                        }
+                        
+                        // Display results
+                        const div = document.getElementById('networks');
+                        div.innerHTML = '';
+                        
+                        data.forEach(net => {
+                            const el = document.createElement('div');
+                            el.className = 'item';
+                            el.innerHTML = `${net.ssid} (${net.rssi} dBm)`;
+                            el.onclick = () => {
+                                document.getElementById('ssid').value = net.ssid;
+                                document.getElementById('filename').value = net.ssid.replace(/[^a-zA-Z0-9]/g, '_');
+                                checkFilename();
+                            };
+                            div.appendChild(el);
+                        });
+                        
+                        status.textContent = `Found ${data.length} networks`;
+                        
+                    } catch(e) {
+                        console.error(e);
+                        if (attempts > maxAttempts) {
+                            clearInterval(poll);
+                            status.textContent = 'Scan timeout';
+                        }
+                    }
+                }, 500);   // poll every 500ms
+                
+            } catch(e) {
+                status.textContent = 'Failed to start scan';
+            }
+        }
+
+        async function loadExisting() {
+            const div = document.getElementById('existing');
+            div.innerHTML = '<p>Loading configurations...</p>';
+            
+            try {
+                const res = await fetch('/list');
+                if (!res.ok) throw new Error('Failed');
+                
+                currentFiles = await res.json();
+                
+                if (currentFiles.length === 0) {
+                    div.innerHTML = '<p>No saved configurations yet.</p>';
+                    return;
+                }
+                
+                div.innerHTML = '';
+                currentFiles.forEach(f => {
+                    const el = document.createElement('div');
+                    el.className = 'item';
+                    el.innerHTML = `
+                        <span><strong>${f.name}</strong> → ${f.ssid}</span>
+                        <div>
+                            <button onclick="attemptConnection('${f.name}')" style="background:#28a745; margin-right:5px;">Attempt</button>
+                            <button class="delete" onclick="deleteConfig('${f.name}')">Delete</button>
+                        </div>
+                    `;
+                    div.appendChild(el);
+                });
+            } catch(e) {
+                div.innerHTML = '<p style="color:#dc3545;">Failed to load configurations</p>';
+            }
+        }
+
+        // New function for Attempt button
+        async function attemptConnection(filename) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = `Attempting to connect using ${filename}.conf...`;
+
+            try {
+                const res = await fetch('/attempt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({filename})
+                });
+
+                // Poll for result (reuse same logic as save)
+                let attempts = 0;
+                const poll = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const statusRes = await fetch('/connectstatus');
+                        const data = await statusRes.json();
+
+                        if (data.status === "connecting") return;
+
+                        clearInterval(poll);
+
+                        if (data.status === "success") {
+                            statusEl.innerHTML = `✅ Connected successfully!<br>IP: ${data.ip}<br><br>Device will restart shortly...`;
+                            setTimeout(() => ESP.restart(), 2500);   // we'll add this endpoint
+                        } else {
+                            statusEl.textContent = '❌ Connection failed. Still in AP mode.';
+                        }
+                    } catch(e) {
+                        clearInterval(poll);
+                        statusEl.textContent = 'Error during attempt';
+                    }
+                }, 600);
+
+            } catch(e) {
+                statusEl.textContent = 'Failed to start connection attempt';
+            }
+        }
+
+        function checkFilename() {
+            const name = document.getElementById('filename').value.trim();
+            const warning = document.getElementById('filenameWarning');
+            if (currentFiles.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+                warning.textContent = '⚠️ Filename already exists (will be overwritten)';
+            } else {
+                warning.textContent = '';
+            }
+        }
+
+        async function saveWifi() {
+            const filename = document.getElementById('filename').value.trim();
+            const ssid = document.getElementById('ssid').value.trim();
+            const pass = document.getElementById('pass').value.trim();
+            const statusEl = document.getElementById('status');
+
+            if (!filename || !ssid) {
+                statusEl.textContent = 'Filename and SSID are required';
+                return;
+            }
+
+            statusEl.textContent = 'Testing connection to network...';
+
+            try {
+                // Step 1: Test connection
+                const testRes = await fetch('/testconnect', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ssid, pass})
+                });
+
+                // Step 2: Poll for result
+                let attempts = 0;
+                const maxAttempts = 50; // ~25 seconds
+
+                const poll = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const res = await fetch('/connectstatus');
+                        const data = await res.json();
+
+                        if (data.status === "connecting") {
+                            return; // keep polling
+                        }
+
+                        clearInterval(poll);
+
+                        if (data.status === "success") {
+                            statusEl.textContent = 'Connected successfully! Saving configuration...';
+                            
+                            // Step 3: Save config only if connected
+                            const saveRes = await fetch('/save', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({filename, ssid, pass})
+                            });
+
+                            const saveText = await saveRes.text();
+                            statusEl.textContent = saveText;
+
+                            if (saveRes.ok) {
+                                setTimeout(() => {
+                                    statusEl.textContent = "Success! Restarting device...";
+                                    setTimeout(() => { window.location.href = '/'; }, 1500);
+                                }, 1000);
+                            }
+                        } 
+                        else {
+                            statusEl.textContent = 'Failed to connect to network. Configuration not saved.';
+                        }
+
+                    } catch(e) {
+                        clearInterval(poll);
+                        statusEl.textContent = 'Error during connection test';
+                    }
+                }, 500);
+
+            } catch(e) {
+                statusEl.textContent = 'Failed to start connection test';
+            }
+        }
+
+        async function deleteConfig(name) {
+            if (!confirm(`Delete ${name}.conf?`)) return;
+            try {
+                const res = await fetch(`/delete?file=${encodeURIComponent(name)}`, {method: 'POST'});
+                const text = await res.text();
+                document.getElementById('status').textContent = text;
+                loadExisting();
+            } catch(e) {}
+        }
+
+        // Auto load everything
+        window.onload = () => {
+            scanNetworks();
+            loadExisting();
+            document.getElementById('filename').addEventListener('input', checkFilename);
+        };
+    </script>
+</body>
+</html>
