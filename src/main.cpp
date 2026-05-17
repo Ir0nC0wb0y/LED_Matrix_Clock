@@ -40,7 +40,7 @@
 
 #define PIN_RTC_SQW     2
 
-//#define DEBUG_SERIAL
+#define DEBUG_SERIAL
 #ifdef DEBUG_SERIAL
   #define DBG_SERIAL Serial
 #else
@@ -57,6 +57,18 @@
 
 
 CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
+
+DEFINE_GRADIENT_PALETTE(my_custom_rainbow) {
+    0, 255,   0,   0, // red
+   40, 255, 165,   0, // orange
+   80, 255, 255,   0, // yellow
+  120,   0, 255,   0, // green
+  160,   0,   0, 255, // blue
+  200, 157,   0, 255,// purple
+  240, 255,   0,   0, // red
+  255,   0,   0,   0  // default black
+};
+
 
 /*
 #define MATRIX_COLUMNS
@@ -130,6 +142,8 @@ CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
   int matrix_brightness = MATRIX_BRIGHTNESS_DAY;
   #define BRIGHTNESS_CHECK_PERIOD 5000
   unsigned long brightness_check_last = 0;
+  uint8_t matrix_color_hue = 0;
+  uint8_t matrix_color_hue_last = 0;
 
 unsigned long tic = 0;
 unsigned long toc = 0;
@@ -304,8 +318,8 @@ bool get_nth_bit(char byte_value, int n) {
 void updateFrame() {
   // loop through led array, may require an XY translator
   bool matrix_color_change = false;
-  uint8_t matrix_color_hue = 0;
   #if defined(MATRIX_COLOR_CHANGE_HOUR) || defined(MATRIX_COLOR_CHANGE_MIN)
+    CRGBPalette16 rainbow = my_custom_rainbow;
     if (matrix_brightness == MATRIX_BRIGHTNESS_DAY) {
       matrix_color_change = true;
       // calculate color based on the percent of the hour
@@ -320,7 +334,17 @@ void updateFrame() {
       #ifdef MATRIX_COLOR_CHANGE_MIN
         double hue_percent = (double)time_second/60;
       #endif    
-      matrix_color_hue = (uint8_t)(hue_percent * 255);
+      matrix_color_hue = (uint8_t)(hue_percent * 240);
+
+      if (matrix_color_hue != matrix_color_hue_last) {
+        DBG_SERIAL.println();
+        DBG_SERIAL.print("hue percent:"); DBG_SERIAL.print(hue_percent); DBG_SERIAL.print(" matrix color hue: "); DBG_SERIAL.print(matrix_color_hue); DBG_SERIAL.print(" matrix color hue last: "); DBG_SERIAL.println(matrix_color_hue_last);
+        CRGB led_color = ColorFromPalette( rainbow, matrix_color_hue);
+        DBG_SERIAL.print("  R:"); DBG_SERIAL.print(led_color.r); DBG_SERIAL.print(" G:"); DBG_SERIAL.print(led_color.g); DBG_SERIAL.print(" B:"); DBG_SERIAL.println(led_color.b);
+        DBG_SERIAL.println();
+        matrix_color_hue_last = matrix_color_hue;
+      }
+       
     }
   #endif
   int last_color_led = 0;
@@ -333,7 +357,8 @@ void updateFrame() {
       
       if (get_nth_bit(current_byte,row)) {
         if (matrix_color_change) {
-          leds[current_led] = CHSV(matrix_color_hue,(uint8_t)255,(uint8_t)255);
+          //leds[current_led] = CHSV(matrix_color_hue,(uint8_t)255,(uint8_t)255);
+          leds[current_led] = ColorFromPalette( rainbow, matrix_color_hue);
           last_color_led = current_led;
         } else {
           leds[current_led] = CRGB::Blue;
