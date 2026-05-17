@@ -2,6 +2,8 @@
 //#define FASTLED_ESP8266_NODEMCU_PIN_ORDER
 //#define FASTLED_FORCE_SOFTWARE_SPI
 #define FASTLED_ESP32_LCD_DRIVER
+//#define TIME_DRIFT_INFO
+
 #include <FastLED.h>
 #include <WiFiUdp.h>
 
@@ -16,6 +18,8 @@
 // Options
 #define MATRIX_BRIGHTNESS_DAY 50
 #define MATRIX_BRIGHTNESS_NIGHT 1
+#define MATRIX_DAY_START    8
+#define MATRIX_NIGHT_START 22
 #define MATRIX_COLOR_CHANGE_HOUR
 //#define MATRIX_COLOR_CHANGE_MIN
 
@@ -40,7 +44,7 @@
 
 #define PIN_RTC_SQW     2
 
-#define DEBUG_SERIAL
+//#define DEBUG_SERIAL
 #ifdef DEBUG_SERIAL
   #define DBG_SERIAL Serial
 #else
@@ -59,16 +63,16 @@
 CRGB leds[MATRIX_WIDTH * MATRIX_HEIGHT];
 
 DEFINE_GRADIENT_PALETTE(my_custom_rainbow) {
-    0, 255,   0,   0, // red
-   40, 255, 165,   0, // orange
-   80, 255, 255,   0, // yellow
-  120,   0, 255,   0, // green
-  160,   0,   0, 255, // blue
-  200, 157,   0, 255,// purple
-  240, 255,   0,   0, // red
+    0, 255,   0,   0, // red    - :00
+   40, 255,  60,   0, // orange - :10 (too yellow)
+   80, 255, 200,   0, // yellow - :20 (too green)
+  120,   0, 255,   0, // green  - :30
+  160,   0,   0, 255, // blue   - :40
+  200, 191,   0, 255, // purple  - :50
+  240, 255,   0,   0, // red    - :60 (:00)
   255,   0,   0,   0  // default black
 };
-
+CRGBPalette256 rainbow = my_custom_rainbow;
 
 /*
 #define MATRIX_COLUMNS
@@ -140,7 +144,7 @@ DEFINE_GRADIENT_PALETTE(my_custom_rainbow) {
   unsigned long matrix_clock_update = 0;
   void MatrixBrightness(bool force = false);
   int matrix_brightness = MATRIX_BRIGHTNESS_DAY;
-  #define BRIGHTNESS_CHECK_PERIOD 5000
+  #define BRIGHTNESS_CHECK_PERIOD 100
   unsigned long brightness_check_last = 0;
   uint8_t matrix_color_hue = 0;
   uint8_t matrix_color_hue_last = 0;
@@ -175,7 +179,7 @@ void setup() {
   DBG_SERIAL.println("... Success!");
 
   connect2WiFi(); // must be done after LittleFS is successful
-  DBG_SERIAL.print("WiFi.status = "); Serial.println(WiFi.status());
+  //DBG_SERIAL.print("WiFi.status = "); DBG_SERIAL.println(WiFi.status());
 
   DBG_SERIAL.print("Setting up NTP... ");
   ntp.updateInterval(NTP_UPDATE_PERIOD);
@@ -319,7 +323,7 @@ void updateFrame() {
   // loop through led array, may require an XY translator
   bool matrix_color_change = false;
   #if defined(MATRIX_COLOR_CHANGE_HOUR) || defined(MATRIX_COLOR_CHANGE_MIN)
-    CRGBPalette16 rainbow = my_custom_rainbow;
+    //CRGBPalette256 rainbow = my_custom_rainbow;
     if (matrix_brightness == MATRIX_BRIGHTNESS_DAY) {
       matrix_color_change = true;
       // calculate color based on the percent of the hour
@@ -329,7 +333,7 @@ void updateFrame() {
       int time_minute = minute(t_tz);
       int time_second = second(t_tz);
       #ifdef MATRIX_COLOR_CHANGE_HOUR
-        double hue_percent = ((double)time_minute + (double)time_second/60)/60;
+        double hue_percent = ((double)time_minute*60 + (double)time_second)/3600;
       #endif
       #ifdef MATRIX_COLOR_CHANGE_MIN
         double hue_percent = (double)time_second/60;
@@ -371,6 +375,7 @@ void updateFrame() {
     }
   }
   FastLED.show();
+  //DBG_SERIAL.print(";");
 }
 
 void convertMessage(String message) {
@@ -426,11 +431,13 @@ void convertMessage(String message) {
     frame_current.frame[i] = frame_temp.frame[i];
   }
   //DBG_SERIAL.println();
+  //DBG_SERIAL.print(",");
   updateFrame();
 }
 
 void MatrixClockDisplay() {
   if (millis() - matrix_clock_update >= MATRIX_CLOCK_REFRESH_RATE) {
+    matrix_clock_update = millis();
     // convert time_t to String
     time_t t_now = now();
     TimeChangeRule *tcr;
@@ -442,6 +449,7 @@ void MatrixClockDisplay() {
     String formattedTime = String(buffer);
 
     // Push message to matrix
+    //DBG_SERIAL.print(" .");
     convertMessage(formattedTime);
   }
 }
@@ -520,17 +528,17 @@ void MatrixBrightness(bool force) {
     TimeChangeRule *tcr;
     time_t t_tz = usCT.toLocal(t_now, &tcr);
     int hour_temp = hour(t_tz);
-    DBG_SERIAL.print("Current hour is: "); DBG_SERIAL.println(hour_temp);
+    //DBG_SERIAL.print("Current hour is: "); DBG_SERIAL.println(hour_temp);
 
     
-    if (hour_temp >= 8 && hour_temp < 22) {
+    if (hour_temp >= MATRIX_DAY_START && hour_temp < MATRIX_NIGHT_START) {
       // if hour between 8am and 11pm, use day time brightness
       if (matrix_brightness != MATRIX_BRIGHTNESS_DAY) {
         DBG_SERIAL.println(" using day time brightness");
         matrix_brightness = MATRIX_BRIGHTNESS_DAY;
         state_change = true;
       }
-    } else if (hour_temp < 8 || hour_temp >= 22) {
+    } else if (hour_temp < MATRIX_DAY_START || hour_temp >= MATRIX_NIGHT_START) {
       // else use nighttime brightness
       if (matrix_brightness != MATRIX_BRIGHTNESS_NIGHT) {
         DBG_SERIAL.println(" using night time brightness");
