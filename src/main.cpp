@@ -13,6 +13,7 @@
 #include <TimeLib.h>
 #include <Wire.h>
 
+#include <ExpFilter.h>
 #include "project_wifi.h"
 
 // Options
@@ -44,7 +45,7 @@
 
 #define PIN_RTC_SQW     2
 
-//#define DEBUG_SERIAL
+#define DEBUG_SERIAL
 #ifdef DEBUG_SERIAL
   #define DBG_SERIAL Serial
 #else
@@ -131,12 +132,16 @@ CRGBPalette256 rainbow = my_custom_rainbow;
   #define SERIAL_CLOCK_REFRESH_RATE 1000
   unsigned long serial_clock_update = 0;
   //#define SET_HARDCODED_TIME
-  #define UPDATE_RTC_FROM_NPC_DIFFERENCE 1800
-  void check_NTP_RTC(bool force = false);
-  void RTC_SQW_Interrupt();
-  bool RTC_SQW_event = false;
-  unsigned long RTC_SQW_last = 0;
-  unsigned long RTC_SQW_time = 0;
+    #define UPDATE_RTC_FROM_NPC_DIFFERENCE 1800
+    void check_NTP_RTC(bool force = false);
+  // Square Wave Second
+    void RTC_SQW_Interrupt();
+    void RTC_SQW_Process();
+    bool RTC_SQW_event = false;
+    unsigned long RTC_SQW_last = 0;
+    unsigned long RTC_SQW_time = 0;
+    ExpFilter<unsigned long> RTC_SQW;
+    #define FILTER_SQW_WEIGHT .75
 
 // Matrix Clock
   void MatrixClockDisplay();
@@ -227,6 +232,8 @@ void setup() {
       RTC.squareWave(SQWAVE_1_HZ);
       // attach interrupt
       attachInterrupt(PIN_RTC_SQW, RTC_SQW_Interrupt, RISING);
+      RTC_SQW.setWeight(FILTER_SQW_WEIGHT);
+      RTC_SQW.setValue(1000000); // default to 1 second of microseconds
       valid_RTC = true;
 
       #ifdef SET_HARDCODED_TIME
@@ -271,15 +278,7 @@ void loop() {
     DBG_SERIAL.println("Checked Wifi");
   }
 
-  if (RTC_SQW_event) {
-    DBG_SERIAL.print("SQW Event time: "); DBG_SERIAL.println(RTC_SQW_time);
-    DBG_SERIAL.print("SQW Jitter: "); DBG_SERIAL.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
-    RTC_SQW_last = RTC_SQW_time;
-    RTC_SQW_event = false;
-    SerialClockDisplay();
-    DBG_SERIAL.println();
-  }
-
+  RTC_SQW_Process();
 }
 
 void clearDisplay() {
@@ -516,6 +515,19 @@ void check_NTP_RTC(bool force) {
 void RTC_SQW_Interrupt() {
   RTC_SQW_time = micros();
   RTC_SQW_event = true;
+}
+
+void RTC_SQW_Process() {
+  if (RTC_SQW_event) {
+    RTC_SQW.filter(RTC_SQW_time-RTC_SQW_last);
+    DBG_SERIAL.print("SQW Event time: "); DBG_SERIAL.println(RTC_SQW_time);
+    DBG_SERIAL.print("SQW Jitter: "); DBG_SERIAL.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
+    DBG_SERIAL.print("SQW Filter: "); DBG_SERIAL.println(RTC_SQW.getValue());
+    RTC_SQW_last = RTC_SQW_time;
+    RTC_SQW_event = false;
+    SerialClockDisplay();
+    DBG_SERIAL.println();
+  }
 }
 
 void MatrixBrightness(bool force) {
