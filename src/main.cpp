@@ -45,7 +45,7 @@
 
 #define PIN_RTC_SQW     2
 
-#define DEBUG_SERIAL
+//#define DEBUG_SERIAL
 #ifdef DEBUG_SERIAL
   #define DBG_SERIAL Serial
 #else
@@ -519,7 +519,10 @@ void RTC_SQW_Interrupt() {
 
 void RTC_SQW_Process() {
   if (RTC_SQW_event) {
-    RTC_SQW.filter(RTC_SQW_time-RTC_SQW_last);
+    if (RTC_SQW_time-RTC_SQW_last < 2000000) {
+      RTC_SQW.filter(RTC_SQW_time-RTC_SQW_last);
+    }
+    
     DBG_SERIAL.print("SQW Event time: "); DBG_SERIAL.println(RTC_SQW_time);
     DBG_SERIAL.print("SQW Jitter: "); DBG_SERIAL.println((long)RTC_SQW_time - (long)RTC_SQW_last - 1000000);
     DBG_SERIAL.print("SQW Filter: "); DBG_SERIAL.println(RTC_SQW.getValue());
